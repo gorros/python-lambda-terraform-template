@@ -1,0 +1,9 @@
+# OS
+Thumbs.db
+.DS_Store
+
+# Idea
+.idea
+*.iml
+*.iws
+*.ipr

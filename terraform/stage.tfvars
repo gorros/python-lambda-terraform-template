@@ -1,0 +1,1 @@
+# Here we set values of variables for stage environment

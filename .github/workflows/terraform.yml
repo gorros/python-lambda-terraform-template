@@ -1,0 +1,127 @@
+name: Terraform CI/CD
+
+on:
+  push:
+    branches:
+      - master
+      - staging
+    paths:
+      - 'terraform/**'
+      - 'lambda/**'
+      - '.github/workflows/terraform.yml'
+  pull_request:
+    branches:
+      - master
+      - staging
+    paths:
+      - 'terraform/**'
+      - 'lambda/**'
+      - '.github/workflows/terraform.yml'
+
+jobs:
+  test_lambda:
+    name: 'Test Lambda functions'
+    timeout-minutes: 15
+    runs-on: self-hosted
+    env:
+      AWS_DEFAULT_REGION: us-east-1
+    defaults:
+      run:
+        working-directory: lambda
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Cache Lambda dependencies
+        uses: actions/cache@v2
+        id: cache
+        with:
+          path: lambda/.venv
+          key: ${{ runner.os }}-pip-lambda-${{ hashFiles('lambda/requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-lambda
+
+      - name: Install Lambda dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get install -y python3-venv
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install -r requirements.txt
+
+      - name: Test coverage
+        run: |
+          source .venv/bin/activate
+          export PYTHONPATH=$PYTHONPATH:`pwd`/src
+          coverage run --source=src/ -m unittest discover -s tests/
+          coverage report --fail-under=80
+
+  terraform:
+    name: 'Terraform'
+    timeout-minutes: 60
+    needs: test_lambda
+    runs-on: self-hosted
+    env:
+      AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - name: Set env to stage
+        if: github.base_ref == 'staging' || github.ref == 'refs/heads/staging'
+        run: echo "::set-env name=ENV_NAME::stage"
+
+      - name: Set env to prod
+        if: github.base_ref == 'master' || github.ref == 'refs/heads/master'
+        run: echo "::set-env name=ENV_NAME::prod"
+
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-region: us-east-1
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          role-duration-seconds: 3600
+
+      - name: Install unzip
+        run: sudo apt-get install -y unzip
+
+      - name: Cache Lambda dependencies
+        uses: actions/cache@v2
+        id: cache
+        with:
+          path: lambda/.venv
+          key: ${{ runner.os }}-pip-lambda-${{ hashFiles('lambda/requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-lambda
+
+      - name: Prepare packages for Lambda layer
+        run: |
+          mkdir -p ../lambda/packages/python
+          cp -R ../lambda/.venv/lib/python3.?/site-packages/* ../lambda/packages/python/
+
+      - uses: actions/setup-node@v2-beta
+        with:
+          node-version: '12'
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: "0.12.26"
+
+      - name: Terraform Init
+        run: terraform init -backend-config=backend.tfvars
+
+      - name: Terraform Workspace
+        run: terraform workspace select $ENV_NAME || terraform workspace new $ENV_NAME
+
+      - name: Terraform Format
+        run: terraform fmt -check
+
+      - name: Terraform Plan
+        run: terraform plan -var-file=${ENV_NAME}.tfvars
+
+      - name: Terraform Apply
+        if: (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/staging') && github.event_name == 'push'
+        run: terraform apply -var-file=${ENV_NAME}.tfvars -auto-approve
+
