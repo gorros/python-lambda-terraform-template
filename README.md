@@ -1,6 +1,20 @@
 # python-lambda-terraform-template
 
 ## Terraform
+We rely on Terraform workspaces to create separate environments. This requires corrsponding naming convention for resources. Your resource names should have following prefix `${var.project_name}-${terraform.workspace}-`. For example:
+```
+resource "aws_lambda_layer_version" "lambda_layer" {
+  layer_name = "${var.project_name}-${terraform.workspace}-lambda-layer"
+
+  filename         = data.archive_file.lambda_layer_archive.output_path
+  source_code_hash = data.archive_file.lambda_layer_archive.output_base64sha256
+
+  compatible_runtimes = ["python3.7", "python3.8"]
+}
+```
+
+Generally, I suggest to use [Kebab case](https://medium.com/better-programming/string-case-styles-camel-pascal-snake-and-kebab-case-981407998841) since it is easier to distiguish project resources from resources (especially policies and roles) created by AWS which is using Pascal case.
+
 #### Initialize
 ```shell script
 $ cd terraform/
