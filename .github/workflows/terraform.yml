@@ -68,11 +68,11 @@ jobs:
     steps:
       - name: Set env to stage
         if: github.base_ref == 'staging' || github.ref == 'refs/heads/staging'
-        run: echo "::set-env name=ENV_NAME::stage"
+        run: echo "ENV_NAME=stage" >> $GITHUB_ENV
 
       - name: Set env to prod
         if: github.base_ref == 'master' || github.ref == 'refs/heads/master'
-        run: echo "::set-env name=ENV_NAME::prod"
+        run: echo "ENV_NAME=prod" >> $GITHUB_ENV
 
       - name: Checkout
         uses: actions/checkout@v2
