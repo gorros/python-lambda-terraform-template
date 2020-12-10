@@ -1,5 +1,5 @@
 variable "region" {
-  type    = string
+  type = string
 }
 
 variable "project_name" {
@@ -9,4 +9,8 @@ variable "project_name" {
 variable "lambda_packages_path" {
   type    = string
   default = "../lambda/packages"
+}
+
+variable "vpc_cidr" {
+  type = map(string)
 }
